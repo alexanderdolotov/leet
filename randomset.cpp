@@ -1,3 +1,5 @@
+// https://leetcode.com/problems/insert-delete-getrandom-o1/description/
+
 #include <iostream>
 #include <vector>
 #include <ctime>    // for time
@@ -48,7 +50,7 @@ private:
 
     void resize_set(bool up){
 
-        cout << "resizing table" << endl;
+        cout << "resizing table from: " << this->size << " current count: " << this->current_size << endl;
         size_t old_size = this->size;
         vector<Unit*> old_table = table;
 
@@ -72,6 +74,7 @@ private:
         vector<Unit*> newtable = vector<Unit*>(new_size, nullptr);
         
         this->table = newtable;
+        this->current_size=0;
 
         for(size_t i=0; i < old_size; i++){
             
@@ -164,17 +167,15 @@ public:
         Unit unit = Unit(val);
         size_t val_idx = unit.hash % size;
 
-        cout << val << " hashed to: " << unit.hash << " at index: " <<  val_idx << endl;
+        //cout << val << " hashed to: " << unit.hash << " at index: " <<  val_idx << endl;
 
         // check if empty:
         Unit* u = this->table[val_idx];
         if (u == nullptr) {
             this->table[val_idx] = new Unit(val);
-            cout << "inserting new value at index: " << val_idx << endl;
+            cout << "inserting new value " << val << " at index: " << val_idx << endl;
             this->current_size++;
             return true;
-        } else if (u->val == val){
-            return false;
         } else {
             // unit value exists, but indexes collide:
             std::cout << "index collision for: " << val << std::endl;
@@ -191,6 +192,7 @@ public:
                 Unit* u_next = this->table[nextidx];
                 if(u_next == nullptr){
                     table[nextidx] = new Unit(val);
+                    cout << "inserting new value " << val << " at index: " << nextidx << endl;
 
                     u->flag |= (1 << j); // set the bit flag for the value that got filled.
                     
@@ -265,6 +267,7 @@ public:
 
         if (u->val == val){
             delete_and_check_idx(val_idx);
+            cout << "removing value " << val << " at index: " << val_idx << endl;
             return true;
         }
 
@@ -284,6 +287,7 @@ public:
                     Unit* next_u = this->table[nextidx];
                     if(next_u != nullptr){
                         if(next_u->val==val){
+                            cout << "removing value " << val << " at index: " << nextidx << endl;
                             delete_and_check_idx(nextidx);
                             return true;
                         }
@@ -297,8 +301,14 @@ public:
         return false;
 
     }
+
+   
     
     int getRandom() {
+
+        if(this->current_size == 0){
+            return 0;
+        }
 
         std::random_device rd;                         // Seed
         std::mt19937 gen(rd());                        // Mersenne Twister engine
@@ -306,13 +316,23 @@ public:
 
         int random_number = dist(gen);  
 
+        
+
         if(this->table[random_number] != nullptr){
+            
+            cout << "returning random number " << this->table[random_number]->val << " at index: " << random_number << endl;
             return this->table[random_number]->val;
         } else {
+            cout << "did not find random number at index: " << random_number << endl;
             return getRandom();
         }
 
     }
+
+    int getSize() {
+        return this->current_size;
+    }
+
 };
 
 /**
@@ -337,24 +357,15 @@ int main() {
     
     for(int i=0;i<vec.size();i++){
         rs.insert(vec[i]);
+        std::cout << "size: " << rs.getSize() << std::endl;
     }
-
-    std::cout << "Removing 64" << std::endl;
-    rs.remove(64);
-
-    std::cout << "Removing 8" << std::endl;
-    rs.remove(8);
-
-    std::cout << "Removing 2" << std::endl;
-    rs.remove(2);
 
      for(int i=0;i<vec.size();i++){
-        rs.remove(vec[i]);
+        rs.remove(vec[vec.size()-i-1]);
+        std::cout << "size: " << rs.getSize() << std::endl;
     }
 
-    rs.insert(64);
-    rs.insert(8);
-    rs.insert(2);
+    std::cout << "size: " << rs.getSize() << std::endl;
 
     for(int i=0;i<vec.size();i++){
         std::cout <<  rs.hasval(vec[i]) << std::endl;
