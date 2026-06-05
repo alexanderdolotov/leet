@@ -1,338 +1,610 @@
-// https://leetcode.com/problems/insert-delete-getrandom-o1/description/
-
 #include <iostream>
+#include <string>
 #include <vector>
-#include <ctime>    // for time
-#include <functional>
+#include <unordered_map>
+#include <cmath>
+#include <iostream>
 #include <random>
 
-using namespace std;
-
-class Unit {
-    private:
-
-        // a hash function that maps uint->uint, looks kinda random
-        unsigned int knuth_hash(int x) {
-            return static_cast<uint32_t>(x) * 2654435761u;  // Knuth's multiplicative constant
-        }
-
-        unsigned int hashf(int val){
-            return knuth_hash(val);
-        }
-
-    public:
-        int val;
-        unsigned int flag;
-        unsigned int hash;
-
-        Unit(int val){
-            this->val = val;
-            this->flag = 0;
-            this->hash = hashf(val);
-        }
-
-};
-
-class RandomizedSet {
-
+template <typename KeyType, typename ValueType>
+class HashTable {
 private:
-    size_t size;
-    size_t current_size = 0;
-    vector<Unit*> table;
-    size_t max_next_spaces = 3;
+    static constexpr unsigned int HOP_RANGE = 4;
 
-    void initialize(size_t size){
+    struct Bucket {
+        KeyType key;
+        ValueType value;
+        bool occupied;
+        unsigned int hopInfo;
 
-        // generate a table of null pointers (empty values initially.)
-        this->table = vector<Unit*>(size, nullptr);
-
-    }
-
-    void resize_set(bool up){
-
-        cout << "resizing table from: " << this->size << " current count: " << this->current_size << endl;
-        size_t old_size = this->size;
-        vector<Unit*> old_table = table;
-
-        size_t new_size;
-        if (up){
-            new_size = (old_size << 1) + 1; // set size to be 2^n-1 in size, as 2^n distributes too nicely for knuth's hash function
-        } else if (this->size > 7) {
-            new_size = (old_size >> 1);
-        } else {
-            return; // will not resize below size 7
-        }
-        
-        this->size = new_size;
-
-        cout << "new size: " << new_size << endl;
-
-        if (new_size == old_size){
-            throw std::runtime_error("size limit reached in RandomizedSet");
-        }
-
-        vector<Unit*> newtable = vector<Unit*>(new_size, nullptr);
-        
-        this->table = newtable;
-        this->current_size=0;
-
-        for(size_t i=0; i < old_size; i++){
-            
-            if (old_table[i] != nullptr){
-                
-                this->insert( old_table[i]->val ); // insert new value to be re-indexed as per new sizing
-
-                delete  old_table[i];
-                old_table[i] = nullptr; // reset all pointers to null in the old table.
-            }
-
-            
-        }
-
-    }
-
-
-    void delete_and_check_idx(size_t idx){
-
-        Unit* u = this->table[idx];
-        if (u == nullptr) {
-            return;
-        }
-
-        if(u->flag == 0){
-                
-            delete this->table[idx];
-            this->table[idx] = nullptr;
-            this->current_size--;
-            
-        } else {
-            size_t nextidx = idx;
-            vector<Unit*> flagged_units;
-
-            // collect the dangling flag values
-
-            for (size_t i = 0; i < this->max_next_spaces; i++){
-                nextidx++;
-
-                if (nextidx >= this->size){
-                    nextidx = 0; // loop around to start.
-                }
-
-                // check if flag is set. 
-                if (u->flag & ( 1<<i )){  
-                    Unit* next_u = this->table[nextidx];
-                    if(next_u != nullptr){
-                        flagged_units.push_back(next_u);
-                        this->table[nextidx] = nullptr;  // set the flagged indexes to null.
-
-                    }
-                }
-               
-            }
-
-            
-            delete this->table[idx];
-            this->table[idx] = nullptr;
-            this->current_size--;
-
-            // re-insert the flagged dangling values:
-            for(int i =0; i < flagged_units.size(); i++){
-                insert(flagged_units[i]->val);
-                delete flagged_units[i];
-                flagged_units[i] = nullptr;
-            }
-        }
-
-        if(current_size < this->size / 4){
-            resize_set(false);
-        }
-
-    }
-   
-
+        Bucket() : occupied(false), hopInfo(0) {}
+    };
 
 public:
-    RandomizedSet() {
-        this->size = 7;
-        initialize(size);
+    unsigned int tableSize;
+    double loadFactorThreshold;
+    std::vector<Bucket> hashTable;
+    class Iterator {
+    public:
+        Iterator(typename std::vector<Bucket>::iterator current, typename std::vector<Bucket>::iterator end)
+                : current(current), end(end) {}
 
+        Iterator& operator++() {
+            ++current;
+            while (current != end && !current->occupied) {
+                ++current;
+            }
+            return *this;
+        }
+
+        bool operator!=(const Iterator& other) const {
+            return current != other.current;
+        }
+
+        bool operator==(const Iterator& other) const {
+            return current == other.current;
+        }
+
+        typename std::vector<Bucket>::iterator operator*() {
+            return current;
+        }
+
+    private:
+        typename std::vector<Bucket>::iterator current;
+        typename std::vector<Bucket>::iterator end;
+    };
+    // TODO implement the following functions in ../src/HashTable.cpp
+    //Hint: you will also need to implement a hashKey function which will allow you to
+    // create hash values for different KeyTypes
+    explicit HashTable(unsigned int size = 7, double threshold = 0.7);
+    Iterator begin();
+    Iterator end();
+    ValueType& operator[](const KeyType& key);
+    void updateValueForKey(const KeyType& key, ValueType newValue);
+    void insert(const KeyType& key, const ValueType& value);
+    ValueType* search(const KeyType& key);
+    bool remove(const KeyType& key);
+    void clear();
+    unsigned int size() const;
+    double loadFactor() const;
+
+private:
+    unsigned int hopRange = HOP_RANGE;
+    // TODO implement the following functions in ../src/HashTable.cpp
+    unsigned int findFreeSlot(std::vector<Bucket>& cTable, unsigned int startIndex, unsigned int& currentHop);
+    void rehash();
+};
+
+
+#include <stdexcept>
+#include <functional>
+
+#include <string>
+#include <vector>
+#include <limits>
+#include <type_traits>
+#include <iostream>
+using namespace std;
+
+
+// Constructor. Initializes hashTable to initial input size with empty Buckets. 
+template <typename KeyType, typename ValueType>
+HashTable<KeyType, ValueType>::HashTable(unsigned int size, double threshold) {
+
+   // cout << "created hashtable" << endl;
+    this->tableSize = size;
+    this->hashTable = std::vector<Bucket>(size,Bucket());  
+    this->loadFactorThreshold = threshold;
+
+}
+
+
+
+// a hash function that maps int->uint, looks kinda random
+static unsigned int knuth_hash(int x) {
+    return static_cast<uint32_t>(x) * 2654435761u;  // Knuth's multiplicative constant. i.e. the golden ratio: (sqrt(5)-1)/2, multiplied by 2^32.
+}
+
+
+// wrapper hash function, where underlining hash function can be substituted. 
+template <typename KeyType>
+static unsigned int hash_f1(const KeyType& key){
+
+
+    unsigned int hash1 = std::hash<KeyType>{}(key);
+    return knuth_hash(hash1);
+
+}
+
+
+// utility function so I dont need to recalculate index distance all the time, with the wrap-around logic
+static int get_hop_distance(unsigned int start_index, unsigned int end_index, unsigned int table_size){
+
+    if(end_index >= start_index){
+        return end_index - start_index;
+    } else {
+        return table_size - start_index + end_index; // end index looped around
+    }
+
+}
+
+
+// Find free slot. Returns the available index that can be used to insert new value.
+// Has second level recursion, where it will attempt to evict an item if possible, and this will run the findFreeSlot() function again for the potential eviction
+// However, the recursion is limited to HOP_RANGE / 2 runs, so, this should still run in O1, unless HOP_RANGE became arbitrarily large.
+// Recursion could be avoided all together if other class functions could have been created in the header, but this should still satisfy all requirements, as its not full recursion. 
+template <typename KeyType, typename ValueType>
+unsigned int HashTable<KeyType, ValueType>::findFreeSlot(std::vector<Bucket>& cTable, unsigned int startIndex, unsigned int& currentHop) {
+  
+    // If the hope exceeds the HOP_RANGE, the table will need to be rehashed, which means startIndex will also change.
+    if(currentHop >= this->HOP_RANGE){
+        return this->tableSize; // Return the tableSize as index, which will be out of range as signal to rehash.
+    }
+
+
+    unsigned int index_check = startIndex;
+    // currentHop starts at 1
+    for(unsigned int i = currentHop - 1; i < this->HOP_RANGE; i++){
+
+        if (index_check >= this->tableSize){
+            index_check = 0; // Loop back to the beginning of the table if out of bounds of the hashTable.
+        }
+
+        // If bucket no occupied, return available index
+        if(!this->hashTable[index_check].occupied){
+            return index_check;
+        }
+        
+        index_check++; // increment for the next iteration
+    }
+
+    // Here if all values in the HOP_RANGE have been hashed to.
+    // Try eviction
+    index_check = startIndex;
+    // currentHop starts at 1
+    unsigned int hopstart = currentHop - 1;
+    for(unsigned int i = hopstart; i < this->HOP_RANGE; i++){
+
+        if (index_check >= this->tableSize){
+            index_check = 0; // Loop back to the beginning of the table if out of bounds of the hashTable.
+        }
+
+        // if value is hashed to index. try to find next value in line
+        if( hashTable[index_check].hopInfo & 1){
+            unsigned int nexthop = currentHop + 1;
+            unsigned int index_to_evict_to = findFreeSlot(cTable, index_check, nexthop);  // increment the hop by 1, so as not to recurse forever
+
+            if (index_to_evict_to < this->tableSize){
+                // found a eviction index for bucket
+                this->hashTable[index_to_evict_to].key = hashTable[index_check].key;
+                this->hashTable[index_to_evict_to].value = hashTable[index_check].value;
+                this->hashTable[index_to_evict_to].occupied = true;
+
+                unsigned int evict_hop = get_hop_distance(index_check, index_to_evict_to, this->tableSize);
+
+                unsigned int hopval = (1 << evict_hop);
+
+                // append hop info for the evicted value that got pushed down.
+                if( !(hashTable[index_check].hopInfo & hopval )){
+                    this->hashTable[index_check].hopInfo |= (1 << evict_hop);
+                }
+
+                // remove the last bit, since the index_check no longer holds the hashed value
+                if (hashTable[index_check].hopInfo & 1){
+                    this->hashTable[index_check].hopInfo &= ~1; 
+                }  
+               
+                this->hashTable[index_check].occupied = false;
+
+                return index_check; // return the index 
+
+            }
+
+        } else {
+            // The value to check is not hashed to the same index
+            // Find original hashed index:
+            unsigned int original_hash_idx = hash_f1(hashTable[index_check].key) % tableSize;
+
+            unsigned int index_to_evict_to;
+            // check of original hash index is occupied
+            if (!this->hashTable[original_hash_idx].occupied){
+
+                // If not occupied, move to original hash position
+                index_to_evict_to = original_hash_idx;
+
+                this->hashTable[index_to_evict_to].key = hashTable[index_check].key;
+                this->hashTable[index_to_evict_to].value = hashTable[index_check].value;
+                this->hashTable[index_to_evict_to].occupied = true;
+
+                if (! (hashTable[original_hash_idx].hopInfo & 1)){
+                    this->hashTable[index_check].hopInfo |= 1 ;  // set the hop info to 1 for original hashed key 
+                }  
+
+                unsigned int evict_hop = get_hop_distance(original_hash_idx, index_check, this->tableSize);
+
+                if (hashTable[original_hash_idx].hopInfo & evict_hop){
+                    hashTable[original_hash_idx].hopInfo &= ~evict_hop; // remove the hop info of the evicted value
+                }
+
+                this->hashTable[index_check].occupied = false;
+
+                // if index_check was successfully moved to its original hash index: 
+                return index_check; // return the index 
+
+            } else {
+                unsigned int nexthop2 = currentHop + 1;
+                index_to_evict_to = findFreeSlot(cTable, original_hash_idx, nexthop2);  // increment the hop by 1, so as not to recurse forever
+
+                if (index_to_evict_to < this->tableSize){
+            
+                    // found an alternative value to evict to, that is not the original hashed value
+                    this->hashTable[index_to_evict_to].key = hashTable[index_check].key;
+                    this->hashTable[index_to_evict_to].value = hashTable[index_check].value;
+                    this->hashTable[index_to_evict_to].occupied = true;
+
+                    unsigned int evict_hop_old = get_hop_distance(original_hash_idx, index_check, this->tableSize);
+                  
+                    // Unset the original_hash_idx evict hop for the index_check key
+                    if (hashTable[original_hash_idx].hopInfo & evict_hop_old){
+                        hashTable[original_hash_idx].hopInfo &= ~evict_hop_old; // remove the hop info of the evicted value
+                    }
+
+                    // Set the new hop info 
+                    unsigned int evict_hop_new = get_hop_distance(original_hash_idx, index_to_evict_to, this->tableSize);
+
+                    if (! (hashTable[original_hash_idx].hopInfo & evict_hop_new)){
+                        hashTable[original_hash_idx].hopInfo |= evict_hop_new; // add new hop info
+                    }
+    
+                    this->hashTable[index_check].occupied = false;
+
+                    return index_check; 
+
+
+                }
+           
+
+            
+
+            }
+
+
+        }
+        
+        index_check++; // increment for the next iteration
+    }
+
+
+    return this->tableSize; // failed to find a bucket for new insert, will trigger a rehash
+}
+
+
+// Insert new key-value pair. Does not check if key is already occupied. Will just overwrite it if its the same key. 
+// relies on the helper findFreeSlot() function to give it the insert index.
+// Runs in O(N) because it checks the loadFactorThreshold with loadFactor() every time, which runs in O(N) because size() run in O(N)
+template <typename KeyType, typename ValueType>
+void HashTable<KeyType, ValueType>::insert(const KeyType& key, const ValueType& value) {
+    
+    // checking the loadFactor() take N time. Making inserts now run in N complexity. 
+   
+    unsigned int hash_idx = hash_f1(key) % tableSize;
+
+    // cout << "inserting key: " << key << " indexed to: " << hash_idx << endl;
+
+    // currentHop starts at 1, and increments until HOP_RANGE
+    unsigned int hopstart = 1;
+    unsigned int insert_idx = findFreeSlot(this->hashTable, hash_idx, hopstart);
+    unsigned int hop = get_hop_distance(hash_idx, insert_idx, this->tableSize);
+
+   // cout << "inserting key: " << key << " insert_idx: " << hash_idx << endl;
+
+    if(insert_idx < this->tableSize){
+
+        this->hashTable[insert_idx].key = key;
+        this->hashTable[insert_idx].value = value;
+        this->hashTable[insert_idx].occupied = true;
+        this->hashTable[hash_idx].hopInfo |= (1 << hop); // update the original hash index hop value
+
+    } else {
+        // If insert_idx is above tableSize, then no slot was found.
+        rehash(); // Rehash the whole table and upsize 2x
+        insert(key, value); // Attempt re-insert
+    }
+
+}
+
+// Search. Find is key is occupied, and return the value. 
+// Will check the index key hashes to and next HOP_RANGE indexes.
+// Could check if original index has a bit flag set for each subsequent index, 
+// But this extra check is essentially equivalent to simply checking if the keys are also equal. Thereby making it reduncant.
+template <typename KeyType, typename ValueType>
+ValueType* HashTable<KeyType, ValueType>::search(const KeyType& key) {
+
+   // cout << "searching key: " << key << endl;
+    unsigned int hash_idx = hash_f1(key) % tableSize;
+    unsigned int index_check = hash_idx;
+
+    unsigned int hash_index_hopinfo = this->hashTable[index_check].hopInfo; //  redundant to check, when can just check each subsequent key. for small HOP_RANGE
+    
+   // cout << hash_idx << endl;
+    for(unsigned int i = 0; i < this->HOP_RANGE; i++){
+
+        if (index_check >= this->tableSize){
+            index_check = 0; // Loop back to the beginning of the table if out of bounds of the hashTable.
+        }
+       // cout << this->hashTable[index_check].occupied << " key: " << this->hashTable[index_check].key << endl;
+
+        // Could also check for hop info flag, but is just a redundant check when a simple loop also works well.
+        if(this->hashTable[index_check].occupied && this->hashTable[index_check].key == key){
+            return &this->hashTable[index_check].value;
+        }
+        
+        index_check++; // increment for the next iteration
+    }
+
+   // cout << "did not find key: " << key << endl;
+
+    ValueType* result = nullptr;
+    return result;
+  
+}
+
+
+// Update value for key. Very straight forward, find key, if exists, update its value. 
+// If key does not exit, or not occupied (deleted), do nothing
+template <typename KeyType, typename ValueType>
+void HashTable<KeyType, ValueType>::updateValueForKey(const KeyType& key, ValueType newValue) {
+   
+   // cout << "updating key: " << key << " to value " << endl;
+    unsigned int hash_idx = hash_f1(key) % tableSize;
+    unsigned int index_check = hash_idx;
+    
+    for(unsigned int i = 0; i < this->HOP_RANGE; i++){
+
+        if (index_check >= this->tableSize){
+            index_check = 0; // Loop back to the beginning of the table if out of bounds of the hashTable.
+        }
+
+        // Could also check for hop info flag, but is just a redundant check when a simple loop also works well.
+        if(this->hashTable[index_check].occupied && this->hashTable[index_check].key == key){
+            this->hashTable[index_check].value = newValue;
+            return;
+        }
+        
+        index_check++; // increment for the next iteration
+    }
+
+}
+
+// Remove a key. It is just flagged as not occupied. 
+// Any hop info is adjusted. 
+// This empty bucket can later be used to evict other keys into, or re-insert as needed.
+// HashTable WILL NOT shrink in size if number of removed elements, ex. size() is far below some tableSize. 
+// But in a production data structure, the hash table can shrink when size() < tableSize / 4
+template <typename KeyType, typename ValueType>
+bool HashTable<KeyType, ValueType>::remove(const KeyType& key) {
+   
+
+    unsigned int hash_idx = hash_f1(key) % tableSize;
+    unsigned int index_check = hash_idx;
+
+   // cout << "removing key: " << key << " indexed to: " << hash_idx << endl;
+    
+    for(unsigned int i = 0; i < this->HOP_RANGE; i++){
+
+        if (index_check >= this->tableSize){
+            index_check = 0; // Loop back to the beginning of the table if out of bounds of the hashTable.
+        }
+
+        // Could also check for hop info flag, but is just a redundant check when a simple loop also works well.
+        if(this->hashTable[index_check].occupied && this->hashTable[index_check].key == key){
+            
+            this->hashTable[index_check].occupied = false;
+
+            unsigned int hop_adj = get_hop_distance(hash_idx, index_check, this->tableSize);
+
+            if (hashTable[hash_idx].hopInfo & hop_adj){
+                hashTable[hash_idx].hopInfo &= ~hop_adj; // remove the hop info of the evicted value
+            }
+
+            return true;
+        }
+        
+        index_check++; // increment for the next iteration
+    }
+
+    return false;
+}
+
+// Clear. Just sets all the buckets to not occupied, and no hops.
+// DOES NOT REDUCE SIZE
+template <typename KeyType, typename ValueType>
+void HashTable<KeyType, ValueType>::clear() {
+
+    for(unsigned int i = 0; i < this->tableSize; i++){
+        this->hashTable[i].occupied = false;
+        this->hashTable[i].hopInfo = 0;
+    }
+
+}
+
+// Size. Runs in O(n) since we do not keep track of inserts and deletes at run time.
+// Iterates for occupied vector hashtable buckets.
+template <typename KeyType, typename ValueType>
+unsigned int HashTable<KeyType, ValueType>::size() const {
+   
+    // Just loop over every index and count occupied buckets.
+    unsigned int count = 0;
+    for (const Bucket bucket : this->hashTable) {
+        if (bucket.occupied) { count++; }
+    }
+
+    return count;
+}
+
+
+// Load factor. Returns the current size(), which takes O(n) to compute, devided by total hashtable spaces
+template <typename KeyType, typename ValueType>
+double HashTable<KeyType, ValueType>::loadFactor() const {
+    
+    return static_cast<double>(size()) / static_cast<double>(tableSize);
+
+}
+
+
+// Rehash when cannot evict or is above load factor threshold typically.
+// Will double te table size exactly, as this is what the tests chekc for. 
+// However, it would have been best to double in size and add 1. To keep more primes in totalSize. 
+template <typename KeyType, typename ValueType>
+void HashTable<KeyType, ValueType>::rehash() {
+
+   // cout << "rehashing" << endl;
+   // new hashtable size is twice as big + 1
+   // bitshift to double
+   this->tableSize = (this->tableSize << 1)+ 1; //can only double in size to pass tests. 
+
+   std::vector<Bucket> oldhashTable = this->hashTable;
+   this->hashTable = std::vector<Bucket>(this->tableSize, Bucket());
+
+    // populate new hash table
+    for(Bucket b : oldhashTable){
+       if(b.occupied){
+            insert(b.key, b.value);  // it is theoretically possible that another rehash will be called in the inserts of this rehash.
+            b.occupied = false;
+       }
+
+    }
+
+}
+
+
+// Operator []. returns the search value, and will insert value if given = to
+template <typename KeyType, typename ValueType>
+ValueType& HashTable<KeyType, ValueType>::operator[](const KeyType& key) {
+    ValueType* result = search(key);
+    if (!result) {
+        insert(key, ValueType{});  // insert default
+        result = search(key);      // now safe to dereference
+    }
+
+    return *result;
+}
+
+
+// used for iterator, will loop over the hashtable vector for occupied buckets.
+template <typename KeyType, typename ValueType>
+typename HashTable<KeyType, ValueType>::Iterator HashTable<KeyType, ValueType>::begin() {
+    auto it = hashTable.begin();
+    auto endIt = hashTable.end();
+
+    // Skip to the first occupied bucket
+    while (it != endIt && !it->occupied) {
+        ++it;
+    }
+
+    return Iterator(it, endIt);
+}
+
+// ends the iterator with final value.
+template <typename KeyType, typename ValueType>
+typename HashTable<KeyType, ValueType>::Iterator HashTable<KeyType, ValueType>::end() {
+    return Iterator(hashTable.end(), hashTable.end());
+}
+
+
+
+class RandomizedSet {
+public:
+
+    size_t table_it;
+    size_t hash_size = 0;
+    HashTable<int,int> h;
+    RandomizedSet() {
+        h = HashTable<int,int>();
+        table_it = 0;
     }
     
     bool insert(int val) {
 
-        if(this->hasval(val)){
+        if(h.search(val)){
             return false;
         }
-        
-        Unit unit = Unit(val);
-        size_t val_idx = unit.hash % size;
-
-        //cout << val << " hashed to: " << unit.hash << " at index: " <<  val_idx << endl;
-
-        // check if empty:
-        Unit* u = this->table[val_idx];
-        if (u == nullptr) {
-            this->table[val_idx] = new Unit(val);
-            cout << "inserting new value " << val << " at index: " << val_idx << endl;
-            this->current_size++;
-            return true;
-        } else {
-            // unit value exists, but indexes collide:
-            std::cout << "index collision for: " << val << std::endl;
-
-            // check if next 3 spaces are available:
-            size_t nextidx = val_idx;
-            for(int j=0; j < this->max_next_spaces; j++ ){
-                
-                nextidx++;
-                if (nextidx >= this->size){
-                    nextidx = 0; // loop around to start.
-                }
-
-                Unit* u_next = this->table[nextidx];
-                if(u_next == nullptr){
-                    table[nextidx] = new Unit(val);
-                    cout << "inserting new value " << val << " at index: " << nextidx << endl;
-
-                    u->flag |= (1 << j); // set the bit flag for the value that got filled.
-                    
-                    this->current_size++;
-                    return true;
-                }
-
-            }
-
-            resize_set(true);
-            insert(val);
-        }
-
-
-        return false;
-    }
-
-    
-
-    bool hasval(int val){
-
-        Unit unit = Unit(val);
-        size_t val_idx = unit.hash % size;
-
-        Unit* u = this->table[val_idx];
-        if (u == nullptr) {
-            return false;
-        }
-
-        if (u->val == val){
-            return true;
-        }
-
-        if(u->flag == 0){
-            return false;
-        } else {
-            size_t nextidx = val_idx;
-            for (size_t i = 0; i < this->max_next_spaces; i++){
-                nextidx++;
-
-                if (nextidx >= this->size){
-                    nextidx = 0; // loop around to start.
-                }
-
-                // check if flag is set. sort of meaningless, because can just check the next index anyways.
-                if (u->flag & ( 1<<i )){  
-                    Unit* next_u = this->table[nextidx];
-                    if(next_u != nullptr){
-                        if(next_u->val==val){
-                            return true;
-                        }
-                    }
-                }
-               
-            }
-
-        }
-
-        return false;
+        h.insert(val,val);
+        hash_size++;
+        return true;
     }
     
-
     bool remove(int val) {
+        if(h.search(val)){
+            h.remove(val);
+            hash_size--;
 
-        Unit unit = Unit(val);
-        size_t val_idx = unit.hash % size;
+            if(hash_size < h.tableSize / 4){
+               
+                HashTable<int,int> h2 =  HashTable<int,int>();
+                for(unsigned int i = 0; i < this->h.tableSize; i++){
+                    if(h.hashTable[i].occupied){
+                        h2.insert(h.hashTable[i].value, h.hashTable[i].value);
+                    }
+                   
+                }
 
-        Unit* u = this->table[val_idx];
-        if (u == nullptr) {
-            return false;
-        }
+                this->h=h2;
+                table_it=0;
+                
+            }
 
-        if (u->val == val){
-            delete_and_check_idx(val_idx);
-            cout << "removing value " << val << " at index: " << val_idx << endl;
             return true;
         }
+        return false;
+    }
+    
 
-        if(u->flag == 0){
-            return false;
-        } else {
-            size_t nextidx = val_idx;
-            for (size_t i = 0; i < this->max_next_spaces; i++){
-                nextidx++;
+    int random1(){
+        while(true){
 
-                if (nextidx >= this->size){
-                    nextidx = 0; // loop around to start.
-                }
+            if(table_it >= this->h.tableSize){
+                table_it=0;
+            }
+            
+            if(h.hashTable[table_it].occupied){
+                int val = h.hashTable[table_it].value;
+                table_it++;
+                return val;
 
-                // check if flag is set. sort of meaningless, because can just check the next index anyways.
-                if (u->flag & ( 1<<i )){  
-                    Unit* next_u = this->table[nextidx];
-                    if(next_u != nullptr){
-                        if(next_u->val==val){
-                            cout << "removing value " << val << " at index: " << nextidx << endl;
-                            delete_and_check_idx(nextidx);
-                            return true;
-                        }
-                    }
-                }
-               
+            }
+
+            table_it++;
+            
+        }
+    }
+
+    int random2(){
+
+        std::random_device rd;               // Seed (non-deterministic)
+        std::mt19937 gen(rd());              // Mersenne Twister PRNG
+        std::uniform_int_distribution<> dist(0, this->h.tableSize-1);  // Range: [10, 50]
+
+        while (true){
+
+            int r = dist(gen);
+            
+            if(this->h.hashTable[r].occupied){
+                return this->h.hashTable[r].value;
             }
 
         }
+       
 
-        return false;
-
+        
     }
 
-   
-    
+
     int getRandom() {
 
-        if(this->current_size == 0){
-            return 0;
-        }
-
-        std::random_device rd;                         // Seed
-        std::mt19937 gen(rd());                        // Mersenne Twister engine
-        std::uniform_int_distribution<> dist(0, this->size - 1);  // Range: [1, 100]
-
-        int random_number = dist(gen);  
-
-        
-
-        if(this->table[random_number] != nullptr){
-            
-            cout << "returning random number " << this->table[random_number]->val << " at index: " << random_number << endl;
-            return this->table[random_number]->val;
-        } else {
-            cout << "did not find random number at index: " << random_number << endl;
-            return getRandom();
-        }
+        return random2();
 
     }
-
-    int getSize() {
-        return this->current_size;
-    }
-
 };
 
 /**
@@ -342,46 +614,3 @@ public:
  * bool param_2 = obj->remove(val);
  * int param_3 = obj->getRandom();
  */
-
-
-
-int main() {
-    std::cout << "Starting Script" << std::endl;
-
-    std::vector<int> vec1 = {1,1,2,3,4,5,6,7,8,9,10};
-    std::vector<int> vec2 = {2,4,8,16,32,64,128,256,512,1024,2048,2049,2050,2051};
-
-    std::vector<int> vec = vec2;
-
-    RandomizedSet rs = RandomizedSet();
-    
-    for(int i=0;i<vec.size();i++){
-        rs.insert(vec[i]);
-        std::cout << "size: " << rs.getSize() << std::endl;
-    }
-
-     for(int i=0;i<vec.size();i++){
-        rs.remove(vec[vec.size()-i-1]);
-        std::cout << "size: " << rs.getSize() << std::endl;
-    }
-
-    std::cout << "size: " << rs.getSize() << std::endl;
-
-    for(int i=0;i<vec.size();i++){
-        std::cout <<  rs.hasval(vec[i]) << std::endl;
-    }
-
-    std::cout << "Random Number" << std::endl;
-    for(int i=0; i<10; i++){
-        std::cout << rs.getRandom() << std::endl;
-    }
-
-    std::cout << "All Done" << std::endl;
-
-
-    return 0;
-}
-
-
-//  g++ -std=c++11 randomset.cpp -o randomset && ./randomset
-
